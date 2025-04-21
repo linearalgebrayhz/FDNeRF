@@ -52,7 +52,8 @@ def main(args,
          folder_name_out='images_align',
          folder_name_out_msk='images_masked'):
     # total 359
-    folders = [str(x + 1) for x in range(0, 25)]
+    # folders = [str(x + 1) for x in range(0, 25)]
+    folders = os.listdir(args.datapath)
     # folders = ['1']
     dshape = [512, 512, 3]
 
@@ -66,7 +67,7 @@ def main(args,
     model_path = './src/data_process/SegmentCode/Seg_79999_iter.pth'
     net = BiSeNet(n_classes=n_classes)
     net.to(device)
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location = device))
     net.eval()
     to_tensor = transforms.Compose([
         transforms.ToTensor(),
@@ -261,10 +262,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--datapath",
                         type=str,
-                        default='/data/zhangjingbo/FaceScape_new/images')
+                        default='/scratch/network/hy4522/FDNeRF_data/mp4/exp_result')
     parser.add_argument("--savepath",
                         type=str,
-                        default='/data/zhangjingbo/FaceScape_align3/images')
+                        default='/scratch/network/hy4522/FDNeRF_data/mp4/3DMM_result')
     args = parser.parse_args()
 
     main(args)

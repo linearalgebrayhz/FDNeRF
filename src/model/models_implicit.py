@@ -51,6 +51,9 @@ class PixelNeRFNet_implicit_edit(torch.nn.Module):
             print("-----PixelNeRF frozen!")
         else:
             print("-----PixelNeRF training!")
+            
+        # print(f"Mapping net first layer input size: {self.mapping_net.first[0].in_features}")
+        # print(f"Mapping net first layer output size: {self.mapping_net.first[0].out_features}")
 
         self.use_xyz = conf.get_bool("use_xyz", False)
         # Must use some feature.
@@ -138,6 +141,9 @@ class PixelNeRFNet_implicit_edit(torch.nn.Module):
         self.num_views_per_obj = 1
 
     def encode(self, images, poses, focal, z_bounds=None, c=None, semantic=None):
+        # print(f"Inside encode: semantic_src shape={semantic['semantic_src'].shape}")
+        # print(f"Mapping net first layer input size: {self.mapping_net.first[0].in_features}")
+        # print(f"Mapping net first layer output size: {self.mapping_net.first[0].out_features}")
         """
         [summary]
 
@@ -160,6 +166,9 @@ class PixelNeRFNet_implicit_edit(torch.nn.Module):
         else:
             self.num_views_per_obj = 1
 
+        # print(f"semantic_src: {semantic['semantic_src'].shape}")
+        # print(f"semantic_cdn: {semantic['semantic_cdn'].shape}")
+        
         if self.implicit_type == '2D':
             smtic_src = self.mapping_net(semantic['semantic_src'])
             smtic_cdn = self.mapping_net(semantic['semantic_cdn'])

@@ -15,7 +15,7 @@ sys.path.insert(
 import trainlib
 from model import make_model, loss
 from render import NeRFRenderer
-from data import get_split_dataset
+from data import get_split_dataset # in data/__init__.py
 import util
 import numpy as np
 import torch.nn.functional as F
@@ -84,11 +84,35 @@ def extra_args(parser):
         "--with_mask",
         action="store_true",
     )
+    """
+    The action="store_true" parameter specifies the behavior of this argument. 
+    When the --with_mask flag is included in the command line, the argparse module will automatically set the corresponding value to True. 
+    If the flag is omitted, the value will default to False
+    """
     parser.add_argument(
         "--average_semantic",
         action="store_true",
         help="Freeze encoder weights and only train MLP",
     )
+    
+    parser.add_argument(
+        "--extract_volume",
+        action="store_true",
+        help="Extract 3D volume during evaluation",
+    )
+    parser.add_argument(
+        "--volume_grid_size",
+        type=int,
+        default=128,
+        help="Grid size for volume extraction",
+    )
+    parser.add_argument(
+        "--volume_threshold",
+        type=float,
+        default=2.0,
+        help="Density threshold for volume extraction (default: use median)",
+    )
+    
     return parser
 
 
@@ -100,10 +124,18 @@ args, conf = util.args.parse_args(
     default_conf=
     'conf/exp/fp_mixexp_2D_implicit_video.conf', 
     default_datadir=
-    '/home/zhangjingbo/Datasets/FaceDatasets/VoxCeleb',
+    '/scratch/network/hy4522/FDNeRF_data/converted', # change path
     default_expname="000_debug",
     default_gpu_id="1 2 3")
 device = util.get_cuda(args.gpu_id[0])
+
+# Make sure GPU Training
+print("---device info---")
+print(device)
+print("torch.cuda.is_available():", torch.cuda.is_available())
+print("torch.version.cuda:", torch.version.cuda)
+print("torch:", torch.__version__)
+print("-----------------")
 
 # load models
 net = make_model(conf["model"], sem_win=args.semantic_window).to(device=device)
@@ -149,10 +181,13 @@ class PixelNeRFTrainer(trainlib.Trainer):
                          args,
                          conf["train"],
                          device=device)
+        
+        # Loss weight from config
         self.lambda_coarse = conf.get_float("loss.lambda_coarse")
         self.lambda_fine = conf.get_float("loss.lambda_fine", 1.0)
         print("lambda coarse {} and fine {}".format(self.lambda_coarse,
                                                     self.lambda_fine))
+        # Default loss is RGB MSE
         self.rgb_coarse_crit = loss.get_rgb_loss(conf["loss.rgb"], True)
         fine_loss_conf = conf["loss.rgb"]
         if "rgb_fine" in conf["loss"]:
@@ -163,6 +198,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         if net.mlp_fine is not None:
             self.use_fine_mlp = True
 
+        # rendering range
         self.z_near = dset.z_near
         self.z_far = dset.z_far
 
@@ -180,15 +216,27 @@ class PixelNeRFTrainer(trainlib.Trainer):
     def extra_save_state(self):
         torch.save(renderer.state_dict(), self.renderer_state_path)
 
+    # [IMPORTANT] Training Loop
     def calc_losses(self, data, is_train=True, global_step=0):
         if "images" not in data:
             return {}
+        
+        # Dynamic sampling of views
         curr_nviews = nviews[torch.randint(0, len(nviews), ()).item()]
+        
+        """
+        When Training NeRF, we need to use source views to extract features 
+        and compare rendered image with target view to calculate loss
+        """
+        
+        # image from input
         all_images = data["images"]  # (SB, NV, 3, H, W)
-        all_images = torch.cat([all_images[:,:curr_nviews], all_images[:,-1:]], dim=1).to(device=device)
+        # first curr_nviews -> source views; last view of object -> target image
+        all_images = torch.cat([all_images[:,:curr_nviews], all_images[:,-1:]], dim=1).to(device=device) # (SB, curr_nviews+1, 3, H, W)
         SB, NV, C, H, W = all_images.shape
         semantic={}
         len_sem = 85
+        # Semantic feature maps
         if self.args.semantic_window == 1:
             if self.args.average_semantic:
                 semantic["semantic_src"] = torch.mean(data["semantic_src"][:,:curr_nviews,:, :], dim=-1).to(device=device)
@@ -205,6 +253,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         all_focals = data["focal"]  # (SB, NV, 2)
         all_c = data["c"]  # (SB, NV, 2)
         all_nfs = data["nfs"]
+        # Camera Poses, focal length, camera center and near far plane info
         all_poses = torch.cat([all_poses[:,:curr_nviews], all_poses[:,-1:]], dim=1).to(device=device)
         all_focals = torch.cat([all_focals[:,:curr_nviews], all_focals[:,-1:]], dim=1)
         all_c = torch.cat([all_c[:,:curr_nviews], all_c[:,-1:]], dim=1)
@@ -213,6 +262,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         all_rgb_gt = []
         all_rays = []
 
+        # sample ray
         for obj_idx in range(SB):
             images = all_images[obj_idx]  # (NV, 3, H, W)
             poses = all_poses[obj_idx]  # (NV, 4, 4)
@@ -232,9 +282,13 @@ class PixelNeRFTrainer(trainlib.Trainer):
             
             rgb_gt_tar = images_0to1[-1]
             # (3, H, W) --> (H, W, 3)
+            # Prepare ground truth
             rgb_gt_all = (rgb_gt_tar.permute(1, 2,
                                              0).contiguous().reshape(-1, 3))
 
+            # sample ray
+            # Reduce memory usage, mini-batch gradient descend and improving generalization
+            # Full image rendering only feasible during inference stage
             pix_inds = torch.randint(0, H * W, (args.ray_batch_size, ))
             rgb_gt = rgb_gt_all[pix_inds]  # (ray_batch_size, 3)
             rays = cam_rays[-1].view(-1, cam_rays.shape[-1])[pix_inds].to(
@@ -253,6 +307,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         all_c = all_c[:, :curr_nviews]
         all_poses = all_images = None
 
+        # important feature encoding in PixelNeRF, look into model for more details
         net.encode(
             src_images,
             src_poses,
@@ -260,6 +315,11 @@ class PixelNeRFTrainer(trainlib.Trainer):
             c=all_c.to(device=device) if all_c is not None else None,
             semantic=semantic
         )
+        
+        # Render with NeRF renderer
+        # render_par 是封装好的渲染器（通过 renderer.bind_parallel(net, ...) 获取）
+        # 它接收 rays 并返回 coarse/fine 渲染结果（RGB、深度、权重等）
+        # DotMap 是一种类似字典的对象，支持以 . 属性方式访问字段（如 render_dict.coarse.rgb）
         render_dict = DotMap(render_par(
             all_rays,
             want_weights=True,
@@ -627,6 +687,230 @@ class PixelNeRFTrainer(trainlib.Trainer):
         frames_in = np.hstack(vis_src_list)
         return frames, vid_name, [frames_in, gt, all_depth]
 
+def extract_volume_step(self, data, global_step, idx=None):
+    """
+    Extract 3D volume from the model during evaluation
+    
+    Args:
+        data: Input data batch
+        global_step: Current training step
+        idx: Optional batch index to use
+        
+    Returns:
+        None, but saves the extracted volume
+    """
+    if "images" not in data:
+        return {}
+    
+    if idx is None:
+        batch_idx = np.random.randint(0, data["images"].shape[0])
+    else:
+        print(f"Using batch index {idx}")
+        batch_idx = idx
+    
+    scan = data['scan'][batch_idx]
+    img_ids = [data['img_id'][i][batch_idx] for i in range(len(data['img_id']))]
+    curr_nviews = args.nview_test
+    
+    # Prepare input data
+    images = data["images"][batch_idx]
+    images = torch.cat([images[:curr_nviews], images[-1:]], dim=0).to(device=device)
+    NV, C, H, W = images.shape
+    
+    # Process semantic information
+    semantic = {}
+    len_sem = 85
+    if self.args.semantic_window == 1:
+        if self.args.average_semantic:
+            semantic["semantic_src"] = torch.mean(data["semantic_src"][batch_idx,:curr_nviews,:, :], dim=-1).to(device=device)
+            semantic["semantic_cdn"] = torch.mean(data["semantic_cdn"][batch_idx,:curr_nviews,:, :], dim=-1).to(device=device)
+        else:
+            semantic["semantic_src"] = data["semantic_src"][batch_idx,:curr_nviews,:, 13].to(device=device)
+            semantic["semantic_cdn"] = data["semantic_cdn"][batch_idx,:curr_nviews,:, 13].to(device=device)
+    else:
+        s1, s2, s3 = data["semantic_src"][batch_idx,:curr_nviews,:, :].shape
+        semantic["semantic_src"] = data["semantic_src"][batch_idx,:curr_nviews,:, :].reshape(-1, s2, s3).to(device=device)
+        semantic["semantic_cdn"] = data["semantic_cdn"][batch_idx,:curr_nviews,:, :].reshape(-1, s2, s3).to(device=device)
+    
+    poses = data["poses"][batch_idx]  # (NV, 4, 4)
+    focal = data["focal"][batch_idx]  # (1)
+    c = data["c"][batch_idx]
+    nfs = data["nfs"][batch_idx]
+    poses = torch.cat([poses[:curr_nviews], poses[-1:]], dim=0).to(device=device)
+    focal = torch.cat([focal[:curr_nviews], focal[-1:]], dim=0)
+    c = torch.cat([c[:curr_nviews], c[-1:]], dim=0)
+    nfs = torch.cat([nfs[:curr_nviews], nfs[-1:]], dim=0)
+    
+    # Set renderer net to eval mode
+    renderer.eval()
+    
+    # Encode source views with semantics
+    with torch.no_grad():
+        src_images = images[:curr_nviews]
+        src_poses = poses[:curr_nviews]
+        src_focal = focal[:curr_nviews][None] if len(focal.shape) == 2 else focal[:curr_nviews]
+        src_c = c[:curr_nviews][None] if len(c.shape) == 2 else c[:curr_nviews]
+        
+        # Encode the input views
+        net.encode(
+            src_images.unsqueeze(0),
+            src_poses.unsqueeze(0),
+            src_focal.to(device=device),
+            c=src_c.to(device=device) if src_c is not None else None,
+            semantic=semantic
+        )
+        
+        # Generate voxel grid
+        print("Generating voxel grid...")
+        grid_size = getattr(self.args, 'volume_grid_size', 128)  # Default to 128 if not specified
+        bound = 1.0
+        x = torch.linspace(-bound, bound, grid_size)
+        y = torch.linspace(-bound, bound, grid_size)
+        z = torch.linspace(-bound, bound, grid_size)
+        X, Y, Z = torch.meshgrid(x, y, z)
+        pts = torch.stack([X, Y, Z], dim=-1).reshape(-1, 3).to(device=device)
+        
+        # Extract density
+        print("Querying model for density values...")
+        sigmas = []
+        CHUNK = 65536  # Adjust this based on your GPU memory
+        total_chunks = (pts.shape[0] + CHUNK - 1) // CHUNK
+        
+        for i in range(0, pts.shape[0], CHUNK):
+            print(f"Processing chunk {i//CHUNK + 1}/{total_chunks}")
+            chunk_pts = pts[i:i+CHUNK]
+            
+            # Instead of creating rays, we'll directly query the MLP for density
+            # This is a simpler approach that should work with most NeRF implementations
+            density = self.direct_query_density(net, chunk_pts, semantic)
+            sigmas.append(density.cpu())
+        
+        sigmas = torch.cat(sigmas, dim=0)  # Concatenate all chunks
+        
+        # Get density statistics for threshold selection
+        sigma_min = sigmas.min().item()
+        sigma_max = sigmas.max().item()
+        sigma_mean = sigmas.mean().item()
+        sigma_median = sigmas.median().item()
+        print(f"Density stats: min={sigma_min}, max={sigma_max}, mean={sigma_mean}, median={sigma_median}")
+        
+        # Select an appropriate threshold (start with median or use specified value)
+        sigma_thresh = getattr(self.args, 'volume_threshold', None)
+        if sigma_thresh is None:
+            sigma_thresh = sigma_median
+        
+        mask = sigmas > sigma_thresh
+        pts_valid = pts[mask].cpu().numpy()
+        
+        print(f"Selected {pts_valid.shape[0]} points with σ > {sigma_thresh}")
+        
+        # Save the volume points
+        volume_dir = os.path.join(self.visual_path, 'volumes')
+        os.makedirs(volume_dir, exist_ok=True)
+        
+        volume_path = os.path.join(volume_dir, f"volume_{scan}_nv{curr_nviews}.ply")
+        
+        # Export to PLY if we have valid points
+        if pts_valid.shape[0] > 0:
+            try:
+                import open3d as o3d
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(pts_valid)
+                o3d.io.write_point_cloud(volume_path, pcd)
+                print("Exported to", volume_path)
+            except ImportError:
+                # If open3d is not available, use a simple PLY export
+                print("open3d not available, using basic PLY export")
+                with open(volume_path, 'w') as f:
+                    f.write("ply\n")
+                    f.write("format ascii 1.0\n")
+                    f.write(f"element vertex {pts_valid.shape[0]}\n")
+                    f.write("property float x\n")
+                    f.write("property float y\n")
+                    f.write("property float z\n")
+                    f.write("end_header\n")
+                    for pt in pts_valid:
+                        f.write(f"{pt[0]} {pt[1]} {pt[2]}\n")
+                print("Exported to", volume_path)
+        else:
+            print("No points above threshold. Nothing to export.")
+        
+    # Set the renderer back to train mode
+    renderer.train()
+    return volume_path
+
+def direct_query_density(self, model, pts, semantic=None):
+    """
+    Direct query of density values from the model without using rays
+    
+    Args:
+        model: The NeRF model
+        pts: Points to query [N, 3]
+        semantic: Semantic information
+        
+    Returns:
+        Density values [N]
+    """
+    # Process points in manageable chunks to avoid OOM
+    batch_size = 1024
+    sigmas = []
+    
+    for i in range(0, pts.shape[0], batch_size):
+        # Extract current batch
+        pts_batch = pts[i:i+batch_size]
+        num_pts = pts_batch.shape[0]
+        
+        # Create a default view direction (negative z)
+        viewdirs = torch.zeros_like(pts_batch)
+        viewdirs[:, 2] = -1.0
+        
+        # Apply positional encoding if the model uses it
+        if hasattr(model, 'embed_fn') and model.embed_fn is not None:
+            pts_encoded = model.embed_fn(pts_batch)
+        else:
+            pts_encoded = pts_batch
+            
+        if hasattr(model, 'embeddirs_fn') and model.embeddirs_fn is not None:
+            dirs_encoded = model.embeddirs_fn(viewdirs)
+            encoded = torch.cat([pts_encoded, dirs_encoded], dim=-1)
+        else:
+            encoded = pts_encoded
+            
+        # Get latent features
+        latent_vector = model.get_latent_vector(semantic) if hasattr(model, 'get_latent_vector') else None
+        
+        # Run through the model's density network
+        with torch.no_grad():
+            if hasattr(model, 'query_density'):
+                # Use the model's dedicated density query function if available
+                sigma = model.query_density(pts_batch, viewdirs, latent_vector)
+            elif hasattr(model, 'mlp_coarse'):
+                # Access the MLP directly if needed
+                if latent_vector is not None:
+                    repeated_latent = latent_vector.expand(num_pts, -1)
+                    mlp_input = torch.cat([repeated_latent, encoded], dim=-1)
+                else:
+                    mlp_input = encoded
+                    
+                # Get raw output from the MLP
+                raw = model.mlp_coarse(mlp_input)
+                
+                # Extract density (usually the last channel or a specific channel)
+                if raw.shape[-1] >= 4:
+                    sigma = torch.relu(raw[..., 3])  # Assume density is in the 4th channel
+                else:
+                    sigma = torch.relu(raw[..., 0])  # Fallback to first channel
+            else:
+                # If we can't figure out how to get density directly, use a simple heuristic
+                # This is a very simplified approach and might not work well
+                print("Warning: Using simplified density estimation")
+                dist_from_origin = torch.norm(pts_batch, dim=-1)
+                sigma = torch.relu(1.0 - dist_from_origin)
+        
+        sigmas.append(sigma)
+    
+    # Combine all chunks
+    return torch.cat(sigmas, dim=0)
 
 trainer = PixelNeRFTrainer()
 trainer.start()

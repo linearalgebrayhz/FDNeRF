@@ -75,11 +75,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--datapath",
                         type=str,
-                        default='/data/zhangjingbo/FaceScape_3dmm/images')
+                        default='/scratch/network/hy4522/FDNeRF_data/mp4/exp_result')
     parser.add_argument(
         "--savepath",
         type=str,
-        default='/data/zhangjingbo/FaceScape_3dmm/images_align')
+        default='/scratch/network/hy4522/FDNeRF_data/mp4/colmap_result')
     args = parser.parse_args()
 
     main(args)

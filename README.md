@@ -32,3 +32,7 @@ python train/train_fdnerf.py --resume --batch_size 8 --gpu_id 0 --datadir '[data
 ```
 python train/train_fdnerf.py --semantic_window 27 --resume --batch_size 8 --gpu_id 0 --datadir '[datasets path]' --dataset_prefix 'mixwild' --name '2Dimplicitdeform_video' --conf 'conf/exp/fp_mixexp_2D_implicit_video.conf' --chunk_size 4000
 ```
+
+```bash
+pip install dlib
+```

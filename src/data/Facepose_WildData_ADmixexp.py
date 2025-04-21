@@ -59,14 +59,40 @@ def obtain_seq_index(index, num_frames):
     seq = [ min(max(item, 0), num_frames-1) for item in seq ]
     return seq
 
+# def load_ad_params(para_path, num_ids=None):
+#     params_dict = torch.load(os.path.join(para_path, 'track_params.pt'))
+#     euler_angle = params_dict['euler']
+#     trans = params_dict['trans'] / 10.0
+#     exps = params_dict['exp']
+#     params = torch.cat([exps, euler_angle, trans], dim=1)
+#     if num_ids is not None:
+#         params = params[num_ids]
+#     return params.numpy()
+
 def load_ad_params(para_path, num_ids=None):
     params_dict = torch.load(os.path.join(para_path, 'track_params.pt'))
     euler_angle = params_dict['euler']
     trans = params_dict['trans'] / 10.0
     exps = params_dict['exp']
+    
+    # Ensure all tensors have the same first dimension (number of frames)
+    min_frames = min(exps.shape[0], euler_angle.shape[0], trans.shape[0])
+    
+    # Truncate tensors to the minimum number of frames
+    exps = exps[:min_frames]
+    euler_angle = euler_angle[:min_frames]
+    trans = trans[:min_frames]
+    
+    # Now concatenate the tensors
     params = torch.cat([exps, euler_angle, trans], dim=1)
+    
     if num_ids is not None:
-        params = params[num_ids]
+        # Ensure that num_ids doesn't exceed the available frames
+        valid_ids = [idx for idx in num_ids if idx < min_frames]
+        if len(valid_ids) < len(num_ids):
+            print(f"Warning: Some requested IDs were out of range. Using {len(valid_ids)} out of {len(num_ids)} requested IDs.")
+        params = params[valid_ids] if valid_ids else params[0:1]  # Fallback to first frame if all IDs invalid
+    
     return params.numpy()
 
 random.seed(10)
@@ -109,6 +135,9 @@ class FP_WildData_ADmixexp(torch.utils.data.Dataset):
         self.use_num_id = False
         self.use_near_3dmm = True
         self.random_select = False
+        
+        EXCLUDE_DIRS = ["3DMM_result", "colmap_result", "processed","exp_result"]
+        
         if self.stage == 'test' or self.stage == 'val':
             self.random_select = True
         if sem_win > 1:
@@ -117,23 +146,23 @@ class FP_WildData_ADmixexp(torch.utils.data.Dataset):
         if os.path.exists(os.path.join(path, f"{list_prefix}_{stage}.lst")):
             print("Loading data on the basis of " +
                   f"{list_prefix}_{stage}.lst")
-        else:
-            cats = [
-                x for x in os.listdir(path)
-                if os.path.isdir(os.path.join(path, x))
-            ]
-            n_train = np.int(0.7 * len(cats))
-            n_val = np.int(0.2 * len(cats))
-            n_test = len(cats) - n_train - n_val
-            cats_train = sorted(random.sample(cats, n_train))
-            cats_val = sorted(
-                random.sample(list(set(cats).difference(set(cats_train))),
-                              n_val))
-            cats_test = sorted(
-                list(set(cats).difference(set(cats_train), set(cats_val))))
-            save_list(cats_train, path, f"{list_prefix}_train.lst")
-            save_list(cats_val, path, f"{list_prefix}_val.lst")
-            save_list(cats_test, path, f"{list_prefix}_test.lst")
+        # else:
+        #     cats = [
+        #         x for x in os.listdir(path)
+        #         if os.path.isdir(os.path.join(path, x)) and x not in EXCLUDE_DIRS
+        #     ]
+        #     n_train = np.int(0.7 * len(cats))
+        #     n_val = np.int(0.2 * len(cats))
+        #     n_test = len(cats) - n_train - n_val
+        #     cats_train = sorted(random.sample(cats, n_train))
+        #     cats_val = sorted(
+        #         random.sample(list(set(cats).difference(set(cats_train))),
+        #                       n_val))
+        #     cats_test = sorted(
+        #         list(set(cats).difference(set(cats_train), set(cats_val))))
+        #     save_list(cats_train, path, f"{list_prefix}_train.lst")
+        #     save_list(cats_val, path, f"{list_prefix}_val.lst")
+        #     save_list(cats_test, path, f"{list_prefix}_test.lst")
         file_list = os.path.join(path, f"{list_prefix}_{stage}.lst")
 
         self.build_metas(file_list, stage)

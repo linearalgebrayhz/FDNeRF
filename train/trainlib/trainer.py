@@ -8,7 +8,7 @@ Description:
 import os.path
 import torch, pdb
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 import tqdm
 import warnings
 import imageio
@@ -69,7 +69,7 @@ class Trainer:
         self.summary_path = os.path.join(args.resultdir, args.name,
                                          args.logs_path)
         os.makedirs(self.summary_path, exist_ok=True)
-        self.writer = SummaryWriter(self.summary_path)
+        # self.writer = SummaryWriter(self.summary_path)
         if self.args.warp_pretrain:
             self.visual_path = os.path.join(self.args.resultdir,
                                             self.args.name, 'vis_pretrain')
@@ -193,6 +193,10 @@ class Trainer:
         Visualization step
         """
         return None, None
+    
+    def extract_volume_step(self, data, global_step, idx):
+        
+        return None
 
     def warp_vis_step(self, data, global_step):
         """
@@ -230,10 +234,15 @@ class Trainer:
                     with torch.no_grad():
                         vis, vis_vals, outimg = self.vis_step(
                             test_data, global_step=step_id)
-                    if vis_vals is not None:
-                        self.writer.add_scalars("vis",
-                                                vis_vals,
-                                                global_step=step_id)
+                    # if vis_vals is not None:
+                        # self.writer.add_scalars("vis",
+                        #                         vis_vals,
+                        #                         global_step=step_id)
+                        if hasattr(self.args, 'extract_volume') and self.args.extract_volume:
+                            print("Extracting volume...")
+                            volume_path = self.extract_volume_step(
+                                test_data, global_step=step_id, idx=batch)
+                            print(f"Volume extraction complete, saved to {volume_path}")
                     if vis is not None:
                         vis_u8 = (vis * 255).astype(np.uint8)
                         imageio.imwrite(
@@ -361,9 +370,9 @@ class Trainer:
                 training_step = self.train_step
             progress = tqdm.tqdm(bar_format="[{rate_fmt}] ")
             for epoch in range(self.num_epochs):
-                self.writer.add_scalar("lr",
-                                       self.optim.param_groups[0]["lr"],
-                                       global_step=step_id)
+                # self.writer.add_scalar("lr",
+                #                        self.optim.param_groups[0]["lr"],
+                #                        global_step=step_id)
                 batch = 0
                 for _ in range(self.num_epoch_repeats):
                     for data in self.train_data_loader:
@@ -395,6 +404,11 @@ class Trainer:
                                 with torch.no_grad():
                                     vis = self.warp_vis_step(
                                         test_data, global_step=step_id)
+                                    # if hasattr(self.args, 'extract_volume') and self.args.extract_volume:
+                                    #     print("Extracting volume...")
+                                    #     volume_path = self.extract_volume_step(
+                                    #     test_data, global_step=step_id, idx=batch)
+                        
                                 if vis is not None:
                                     vis_u8 = (vis * 255).astype(np.uint8)
                                     imageio.imwrite(
@@ -414,12 +428,12 @@ class Trainer:
                                         test_data, global_step=step_id)
                                 self.net.train()
                                 test_loss_str = fmt_loss_str(test_losses)
-                                self.writer.add_scalars("train",
-                                                        losses,
-                                                        global_step=step_id)
-                                self.writer.add_scalars("test",
-                                                        test_losses,
-                                                        global_step=step_id)
+                                # self.writer.add_scalars("train",
+                                #                         losses,
+                                #                         global_step=step_id)
+                                # self.writer.add_scalars("test",
+                                #                         test_losses,
+                                #                         global_step=step_id)
                                 print("*** Eval:", "E", epoch, "B", batch,
                                       test_loss_str, " lr")
 
@@ -452,9 +466,9 @@ class Trainer:
                                 with torch.no_grad():
                                     vis, vis_vals = self.vis_step(
                                         test_data, global_step=step_id)
-                                if vis_vals is not None:
-                                    self.writer.add_scalars(
-                                        "vis", vis_vals, global_step=step_id)
+                                # if vis_vals is not None:
+                                #     self.writer.add_scalars(
+                                #         "vis", vis_vals, global_step=step_id)
                                 self.net.train()
                                 if vis is not None:
                                     vis_u8 = (vis * 255).astype(np.uint8)

@@ -298,6 +298,7 @@ class NeRFRenderer_vis(torch.nn.Module):
                 # White background
                 pix_alpha = weights.sum(dim=1)  # (B), pixel alpha
                 rgb_final = rgb_final + 1 - pix_alpha.unsqueeze(-1)  # (B, 3)
+            # intermediate results are returned together for further use
             return (weights, rgb_final, depth_final, points_w)
 
     def forward(

@@ -1,4 +1,4 @@
-name: fdnerf
+name: facenerf
 channels:
   - defaults
 dependencies:

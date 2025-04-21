@@ -1,9 +1,5 @@
 """
-Author: Eckert ZHANG
-Date: 2022-01-12 20:28:25
-LastEditTime: 2022-01-18 23:32:31
-LastEditors: Eckert ZHANG
-Description: 
+Geometry prior?
 """
 import numpy as np
 import torch
@@ -11,7 +7,7 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 
-
+# xavier initilization for different layers
 def xaviermultiplier(m, gain):
     if isinstance(m, nn.Conv1d):
         ksize = m.kernel_size[0]
