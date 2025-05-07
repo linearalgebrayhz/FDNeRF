@@ -23,8 +23,8 @@ cd ../..
 # nvidia-smi
 
 python -u ./src/data_process/fdnerf_converter.py \
-    --input_dir /scratch/network/hy4522/FDNeRF_data/mp4/exp_result \
-    --output_dir /scratch/network/hy4522/FDNeRF_data/FDNeRF_converted \
+    --input_dir /scratch/network/hy4522/FDNeRF_data/Custom/exp_result \
+    --output_dir /scratch/network/hy4522/FDNeRF_data/Custom_converted \
     --generate_3dmm \
 
 # nvidia-smi

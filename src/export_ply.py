@@ -8,6 +8,13 @@ from model import make_model
 from data import get_split_dataset
 from torch.utils.data import DataLoader
 
+from util.recon import marching_cubes, save_obj
+
+from skimage import measure
+import trimesh
+
+T = 6.0
+
 # === Project path correction ===
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -59,6 +66,30 @@ semantic = {
 # Encode the images
 model.encode(images.unsqueeze(0), poses.unsqueeze(0), focal, c, semantic=semantic)
 
+# 使用 recon.py 中的 marching_cubes 替代您的体素化方法
+# print("运行 marching cubes 算法...")
+# vertices, triangles = marching_cubes(
+#     model,
+#     c1=[-1.5, -1.5, -1.5],  # 扩大边界以确保捕获整个头部
+#     c2=[1.5, 1.5, 1.5],
+#     reso=[256, 256, 256],   # 增加分辨率
+#     isosurface=0.5,         # 减小阈值以获取更多体积
+#     eval_batch_size=65536,
+#     device=DEVICE
+# )
+
+# # 保存为 OBJ 和 PLY 双格式
+# mesh_obj_path = EXPORT_PATH.replace("volume_points.ply", "volume_mesh.obj")
+# save_obj(vertices, triangles, mesh_obj_path)
+# print(f"网格已导出到 {mesh_obj_path}")
+
+# # 也可以使用 trimesh 保存为 PLY
+# import trimesh
+# mesh = trimesh.Trimesh(vertices=vertices, faces=triangles)
+# mesh_path = EXPORT_PATH.replace("volume_points.ply", "volume_mesh.ply") 
+# mesh.export(mesh_path)
+# print(f"网格已导出到 {mesh_path}")
+
 @torch.no_grad()
 def direct_query_density(model, pts):
     """
@@ -68,9 +99,8 @@ def direct_query_density(model, pts):
     # Process points in manageable chunks
     batch_size = 1024
     sigmas = []
-    
-    # Create a constant feature vector to substitute for image features
-    # Since we only need density for isosurface extraction, this is sufficient
+
+    # ??? 
     dummy_feature = torch.zeros(model.latent_size, device=pts.device)
     
     for i in range(0, pts.shape[0], batch_size):
@@ -140,8 +170,8 @@ def direct_query_density(model, pts):
 
 # === Generate voxel grid ===
 print("Generating voxel grid...")
-grid_size = 128
-bound = 1.0
+grid_size = 256
+bound = 6.0
 x = torch.linspace(-bound, bound, grid_size)
 y = torch.linspace(-bound, bound, grid_size)
 z = torch.linspace(-bound, bound, grid_size)
@@ -161,9 +191,28 @@ for i in range(0, pts.shape[0], CHUNK):
 
 sigmas = torch.cat(sigmas, dim=0)
 
+print("Reshaping sigma into 3D volume...")
+density_volume = sigmas.reshape(grid_size, grid_size, grid_size).detach().cpu().numpy()
+
+# === Apply Marching Cubes ===
+iso_level = T  # Same as sigma_thresh
+print(f"Applying marching cubes with iso-level {iso_level}...")
+verts, faces, normals, _ = measure.marching_cubes(density_volume, level=iso_level)
+
+# === Convert voxel indices to world coordinates
+scale = (2 * bound) / grid_size  # scale from voxel to world space
+verts_world = verts * scale - bound  # shift to [-bound, bound]
+
+# === Create mesh and export
+mesh = trimesh.Trimesh(vertices=verts_world, faces=faces, vertex_normals=normals)
+mesh_path = EXPORT_PATH.replace("volume_points.ply", "volume_mesh.ply")
+mesh.export(mesh_path)
+
+print("Mesh exported to", mesh_path)
+
 # === Filter valid points ===
-sigma_thresh = 5
-mask = sigmas > sigma_thresh
+sigma_thresh = T
+mask = sigmas < sigma_thresh
 pts_valid = pts[mask]
 
 print(f"Selected {pts_valid.shape[0]} points with σ > {sigma_thresh}")

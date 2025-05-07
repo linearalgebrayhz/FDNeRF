@@ -311,7 +311,7 @@ class Trainer:
             for epoch in range(1):
                 batch = 0
                 for test_data in self.test_data_loader:
-                    print("generating video")
+                    print("generating video",flush=True)
                     if self.fixed_test:
                         test_data = next(iter(self.test_data_loader))
                     else:
@@ -326,6 +326,7 @@ class Trainer:
                                          (frames * 255).astype(np.uint8),
                                          fps=30,
                                          quality=8)
+                        print("Video saved to", vid_path,flush=True)
                     if others is not None:
                         if isinstance(others, list):
                             if len(others) == 3:

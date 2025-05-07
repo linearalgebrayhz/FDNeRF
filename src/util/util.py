@@ -824,6 +824,65 @@ def get_composite_pose(c2ws_all, near_far, rads_scale=0.5, N_views=120):  # TODO
 
     return np.stack(render_poses)
 
+def get_expanded_spiral_trajectory(c2w, N_views=120, n_r=2, expansion_factor=2.5, height_range=0.7):
+    """
+    Creates an expanded spiral trajectory that covers more space around the subject
+    
+    Args:
+        c2w: Original camera pose (4x4 matrix)
+        N_views: Number of views to generate
+        n_r: Number of rotations
+        expansion_factor: How much wider to make the spiral (larger = wider view)
+        height_range: Range of vertical movement as a fraction of focal distance
+        
+    Returns:
+        Array of 4x4 camera pose matrices
+    """
+    # Basic setup
+    focal = np.linalg.norm(c2w[:3, 3])
+    up = normalize(c2w[:3, 1])
+    right = normalize(c2w[:3, 0])
+    forward = normalize(c2w[:3, 2])
+    center = c2w[:3, 3]
+    origin = center - focal * forward
+    
+    render_poses = []
+    
+    # Generate a more expansive spiral
+    for i in range(N_views):
+        t = i / N_views
+        angle = t * 2 * np.pi * n_r
+        
+        # Progressive radius expansion - starts small and gets larger
+        # This creates a true spiral outward effect
+        radius_factor = t * expansion_factor
+        r = focal * np.sin(np.pi/18) * (1.0 + radius_factor)
+        
+        # Horizontal circular movement with expanding radius
+        x_offset = np.cos(angle) * r
+        z_offset = np.sin(angle) * r
+        
+        # Vertical movement - start higher, move lower, then back up
+        height = np.cos(t * 2 * np.pi) * height_range * focal
+        
+        # Calculate new camera position with all offsets
+        camera_pos = center + right * x_offset + forward * z_offset + up * height
+        
+        # Always look toward origin (center of avatar)
+        look_dir = normalize(origin - camera_pos)
+        
+        # Construct view matrix
+        # We need to recalculate the camera frame since we're not using viewmatrix
+        z_axis = look_dir
+        x_axis = normalize(np.cross(up, z_axis))
+        y_axis = np.cross(z_axis, x_axis)
+        
+        view_matrix = np.stack([x_axis, y_axis, z_axis, camera_pos], axis=1)
+        view_matrix = np.concatenate([view_matrix, [[0, 0, 0, 1]]], axis=0)
+        
+        render_poses.append(view_matrix)
+    
+    return np.stack(render_poses)
 
 def get_circle_spiral_poses_from_pose(c2w, f_delta=0, N_views=120, n_r=2):
     """
@@ -882,9 +941,9 @@ def get_standard_poses_from_tar_pose(c2w, N_views=120):
     origin = center - focal*c2w[:3, 2]
     NV1 = int(N_views//8)
     NV2 = N_views-7*NV1
-    max_angle_h = 25
-    max_angle_v = 20
-    max_angle_v2 = 20
+    max_angle_h = 35
+    max_angle_v = 30
+    max_angle_v2 = 30
 
     render_poses = []
     theta_list = list(np.linspace(0, -max_angle_h, NV1)) + list(np.linspace(-max_angle_h, max_angle_h, 2*NV1)) + list(np.linspace(max_angle_h, 0, NV1))

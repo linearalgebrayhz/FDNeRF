@@ -59,7 +59,12 @@ def main(args,
     #     ])
 
     print(args.datapath)
-    folders = ['id00419', 'id08696', 'id03041', 'id01567', 'id08552', 'id02725']
+    folders = os.listdir(args.datapath)
+    # folders = ["m--20180226--0000--6674443--GHS",
+    #             "m--20180406--0000--8870559--GHS",
+    #             "m--20180426--0000--002643814--GHS",
+    #             "m--20180510--0000--5372021--GHS",
+    #             "m--20180927--0000--7889059--GHS"]
     # folders = ['id00419', 'id08696', 'id03041', 'id01567', 'id08552', 'id02725', 'id04950', 'id01437', 'id04232', 'id08374', 'id02542', 'id06484', 'id04536', 'id00154', 'id02577', 'id07354', 'id07621', 'id03030', 'id03382', 'id07494', 'id05654', 'id04657', 'id03789', 'id02019', 'id01000', 'id04862', 'id07868', 'id03839', 'id07426', 'id04656', 'id04366', 'id02286', 'id00812', 'id02181', 'id01041', 'id07663', 'id01228', 'id05850', 'id08392', 'id02057', 'id05459', 'id00817', 'id04006', 'id07620', 'id04030', 'id04094', 'id07874', 'id02576', 'id08548', 'id04276', 'id00866', 'id03677', 'id03127', 'id04478', 'id01593', 'id08911', 'id05202', 'id02086', 'id03978', 'id02317', 'id01298', 'id05055', 'id05124', 'id06310', 'id00061', 'id01822', 'id05594', 'id00926', 'id01224', 'id07961', 'id01618', 'id06913', 'id09017', 'id05816', 'id02685', 'id01333', 'id03981', 'id03862', 'id01892', 'id04627', 'id08149', 'id03178', 'id05176', 'id06816', 'id01989', 'id07312', 'id06692', 'id04253', 'id08701', 'id03969', 'id02465', 'id08456', 'id03524', 'id02745', 'id06104', 'id04570', 'id00017', 'id07396', 'id01066', 'id05999', 'id07414', 'id04295', 'id01106', 'id00562', 'id05015', 'id01541', 'id01460', 'id04119', 'id03347', 'id00081', 'id06209', 'id01509', 'id02548']
     print("--- Folders ---")
     print(folders)
@@ -143,7 +148,9 @@ def main(args,
         n_exp = 1
         valid_ids = []
         for exp in exps:
-            imgs_path = os.path.join(root_dir, exp, folder_name_in)
+            # print(f"processing: {exp}")
+            # imgs_path = os.path.join(root_dir, exp, folder_name_in)
+            imgs_path = os.path.join(root_dir, exp)
             img_save_path = os.path.join(save_dir, exp, folder_name_out)
             os.makedirs(img_save_path, exist_ok=True)
             mask_face_save_path = os.path.join(save_dir, exp, 'masks_face')
@@ -155,14 +162,19 @@ def main(args,
             img_masked_save_path = os.path.join(save_dir, exp,
                                                 folder_name_out_msk)
             os.makedirs(img_masked_save_path, exist_ok=True)
-
+            # print(f"images path: {imgs_path}")
             img_list = sorted([
                 x for x in glob.glob(os.path.join(imgs_path, "*"))
                 if (x.endswith(".jpg") or x.endswith(".png"))
+                # x for x in glob.glob(imgs_path)
+                # if (x.endswith(".jpg") or x.endswith(".png"))
             ])
+            # print(img_list)
+            # print(f"img list length: {len(img_list)}")
             face_poses = []
             num = 0
             for img in img_list:
+                print(f"processing img: {img}")
                 img_name = img.split('/')[-1]
                 img = cv2.imread(img)
 
@@ -258,7 +270,7 @@ def main(args,
                 imageio.imsave(
                     os.path.join(img_masked_save_path,
                                  '%02d_%05d.png' % (n_exp, num)), img_masked)
-                # img_noface = np.bitwise_and(mask, img_noface)
+                img_noface = np.bitwise_and(mask, img_noface)
                 imageio.imsave(
                     os.path.join(mask_face_save_path,
                                  '%02d_%05d.png' % (n_exp, num)), img_noface)

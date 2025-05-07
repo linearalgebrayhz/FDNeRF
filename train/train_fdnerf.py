@@ -555,7 +555,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         else:
             return vis_fine, vals
 
-    def vis_video_step(self, data, global_step, idx=None): 
+    def vis_video_step(self, data, global_step, idx=None):
         if "images" not in data:
             return {}
         if idx is None:
@@ -596,7 +596,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
         c = torch.cat([c[:curr_nviews], c[-1:]], dim=0)
         nfs = torch.cat([nfs[:curr_nviews], nfs[-1:]], dim=0)
 
-        print("Generating rays")
+        print("Generating rays", flush=True)
         if self.args.pose_traj_video == 'spiral':
             print("Computes poses following a circle spiral path")
             c2w_avg = util.poses_avg(poses)
@@ -606,9 +606,13 @@ class PixelNeRFTrainer(trainlib.Trainer):
             render_poses = util.get_circle_spiral_poses_from_pose(c2w_avg, f_delta=0.1, N_views=args.num_video_frames, n_r=1)
             render_poses = torch.tensor(render_poses, dtype=torch.float32)
         elif self.args.pose_traj_video == 'standard':
-            print("Using standard camera trajectory")
+            print("Using standard camera trajectory",flush=True)
             c2w_avg = util.poses_avg(poses)
             render_poses = util.get_standard_poses_from_tar_pose(c2w_avg, N_views=args.num_video_frames)
+            render_poses = torch.tensor(render_poses, dtype=torch.float32)
+        elif self.args.pose_traj_video == 'expandedSpiral':
+            c2w_avg = util.poses_avg(poses)
+            render_poses = util.get_expanded_spiral_trajectory(c2w_avg, N_views=args.num_video_frames, n_r=2, expansion_factor=2.5, height_range=0.7)
             render_poses = torch.tensor(render_poses, dtype=torch.float32)
         render_focal = focal[:1, :].repeat(args.num_video_frames, 1)
         render_nfs = nfs[:1, :].repeat(args.num_video_frames, 1)
@@ -677,7 +681,7 @@ class PixelNeRFTrainer(trainlib.Trainer):
                 depth_np = torch.cat(depth_np, dim=1)
                 depth_np = depth_np[0].numpy().reshape(H, W)
                 all_depth.append(depth_np)
-                print(f'finish frame {ni+1}/{NF}')
+                print(f'finish frame {ni+1}/{NF}', flush=True)
         frames = np.stack(all_rgb_fine)
         all_depth = np.stack(all_depth)
         vid_name = f"test_{scan}_{img_id_tar}_nv{curr_nviews}({self.args.pose_traj_video})"

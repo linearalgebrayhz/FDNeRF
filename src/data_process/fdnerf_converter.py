@@ -665,6 +665,11 @@ def main():
     # Process all ID directories
     id_dirs = [os.path.join(args.input_dir, d) for d in os.listdir(args.input_dir) 
                if os.path.isdir(os.path.join(args.input_dir, d)) and d.startswith('id')]
+    # Process all ID directories
+    id_dirs.extend([os.path.join(args.input_dir, d) for d in os.listdir(args.input_dir) 
+               if os.path.isdir(os.path.join(args.input_dir, d)) and d.startswith('m--')])
+    
+    id_dirs = [os.path.join(args.input_dir, "Dataset")]
     
     if not id_dirs:
         print(f"No ID directories found in {args.input_dir}")

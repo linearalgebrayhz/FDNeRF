@@ -29,14 +29,14 @@ class PixelNeRFNet(torch.nn.Module):
         self.use_encoder = conf.get_bool("use_encoder", True)
 
         # load a certain range (box) of features of image, 'box_size_half' is half size of box
-        # self.use_UVfea_box = conf.get_bool("use_UVfea_box", False)
-        # self.UVfea_strategy = conf.get_string("UVfea_strategy", 'max')
-        # self.box_size_half = conf.get_int("box_size_half", 3)
-        # self.multiview_fea_weighted = False  #
-        # if self.UVfea_strategy == "attention":
-        #     self.use_attn = True
-        # else:
-        #     self.use_attn = False
+        self.use_UVfea_box = conf.get_bool("use_UVfea_box", False)
+        self.UVfea_strategy = conf.get_string("UVfea_strategy", 'max')
+        self.box_size_half = conf.get_int("box_size_half", 3)
+        self.multiview_fea_weighted = False  #
+        if self.UVfea_strategy == "attention":
+            self.use_attn = True
+        else:
+            self.use_attn = False
 
         self.use_xyz = conf.get_bool("use_xyz", False)
         # Must use some feature.
@@ -63,12 +63,12 @@ class PixelNeRFNet(torch.nn.Module):
 
         d_latent = self.encoder.latent_size if self.use_encoder else 0
         d_in = 3 if self.use_xyz else 1
-        # if self.use_attn:
-        #     self.attention = AttentionNet(D_in=d_latent,
-        #                                   D_hidden=256,
-        #                                   re_enc=False)
-        # else:
-        #     self.attention = None
+        if self.use_attn:
+            self.attention = AttentionNet(D_in=d_latent,
+                                          D_hidden=256,
+                                          re_enc=False)
+        else:
+            self.attention = None
 
         if self.use_viewdirs and self.use_code_viewdirs:
             # Apply positional encoding to viewdirs
