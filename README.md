@@ -1,8 +1,7 @@
 ## Introduction
 This project is implemented based on [FDNeRF](https://fdnerf.github.io/)
 
-<img src='https://github.com/FDNeRF/FDNeRF.github.io/blob/main/static/images/teaser.png'>
----
+<img src='assets/teaser.png'>
 
 ## Pipeline
 <img src='https://github.com/FDNeRF/FDNeRF.github.io/blob/main/static/images/pipeline_v4.png'>
