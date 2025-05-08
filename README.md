@@ -1,11 +1,7 @@
-# [FDNeRF](https://fdnerf.github.io/)
-Official implementation for the paper "FDNeRF: Few-shot Dynamic Neural Radiance Fields for Face Reconstruction and Expression Editing".
-Note: **This code is forked from [PixelNeRF](https://github.com/sxyu/pixel-nerf).**
+## Introduction
+This project is implemented based on [FDNeRF](https://fdnerf.github.io/)
 
 <img src='https://github.com/FDNeRF/FDNeRF.github.io/blob/main/static/images/teaser.png'>
-Abstract: We propose a Few-shot Dynamic Neural Radiance Field (FDNeRF), the first NeRF-based method capable of reconstruction and expression editing of 3D faces based on a small number of dynamic images. Unlike existing dynamic NeRFs that require dense images as input and can only be modeled for a single identity, our method enables face reconstruction across different persons with few-shot inputs. Compared to state-of-the-art few-shot NeRFs designed for modeling static scenes, the proposed FDNeRF accepts view-inconsistent dynamic inputs and supports arbitrary facial expression editing, i.e., producing faces with novel expressions beyond the input ones. To handle the inconsistencies between dynamic inputs, we introduce a well-designed conditional feature warping (CFW) module to perform expression conditioned warping in 2D feature space, which is also identity adaptive and 3D constrained. As a result, features of different expressions are transformed into the target ones. We then construct a radiance field based on these view-consistent features and use volumetric rendering to synthesize novel views of the modeled faces. Extensive experiments with quantitative and qualitative evaluation demonstrate that our method outperforms existing dynamic and few-shot NeRFs on both 3D face reconstruction and expression editing tasks.
-
-
 ---
 
 ## Pipeline
@@ -21,18 +17,64 @@ conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 pip install mmcv-full==1.3.9 -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.html
 ```
 
-## Implementation
+There are some packages that are not included in the `environment.yml` file. Perhaps the author forget about them. You can install them using the following command:
+```bash
+pip install skimage lpips openpyxl dlib imageio-ffmpeg
+```
+
+## Data Preparation
+The preprocessing pipeline are avaliable in `src/data_process`.
+
+To perform video2frame, please run the following command:
+```bash
+python ./src/data_process/video_preprocess.py
+```
+
+To perform landmark detection, please run the following command:
+```bash
+python -u ./src/data_process/Wild_data_preprocess.py \
+    --datapath /scratch/network/hy4522/FDNeRF_data/kiwi/processed \
+    --savepath /scratch/network/hy4522/FDNeRF_data/kiwi/exp_result \
+    --resolution_tar 512 \
+```
+
+To convert the the dataset to the format used in FDNeRF, please run the following command:
+```bash
+python -u ./src/data_process/fdnerf_converter.py \
+    --input_dir /scratch/network/hy4522/FDNeRF_data/Custom/exp_result \
+    --output_dir /scratch/network/hy4522/FDNeRF_data/Custom_converted \
+    --generate_3dmm \
+```
+
+If you wish to use full head data instead of facial landmark detection + pose estimation. You may use image with calibrated 3DMM parameters. And convert to the format used in FDNeRF.
+
+## Training
+
+Notice: The training process may require a lot of GPU memory. You may need to reduce the batch size and chunk size.
 
 ### train w/ semantic_window 
-```
+```bash
 python train/train_fdnerf.py --resume --batch_size 8 --gpu_id 0 --datadir '[datasets path]' --dataset_prefix 'mixwild' --name '2Dimplicitdeform_reconstruct' --conf 'conf/exp/fp_mixexp_2D_implicit.conf' --chunk_size 4000
 ```
 
 ### train w/o semantic_window 
-```
+```bash
 python train/train_fdnerf.py --semantic_window 27 --resume --batch_size 8 --gpu_id 0 --datadir '[datasets path]' --dataset_prefix 'mixwild' --name '2Dimplicitdeform_video' --conf 'conf/exp/fp_mixexp_2D_implicit_video.conf' --chunk_size 4000
 ```
 
+## Video Generation
+
 ```bash
-pip install dlib
+python train/train_fdnerf.py \
+  --datadir /scratch/network/hy4522/FDNeRF_data/Custom_converted \
+  --name 2Dimplicitdeform_inhomogeneous \
+  --only_video \
+  --gpu_id 0 \
+  --pose_traj_video spiral \
+  --num_video_frames 120 \
+  --nview_test 4 \
+  --resume \
+  --checkpoints_path checkpoints
 ```
+
+Two kinds of trajectory are supported: `spiral` and `standard`.
