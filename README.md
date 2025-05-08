@@ -2,7 +2,7 @@
 This project is implemented based on [FDNeRF](https://fdnerf.github.io/)
 
 <img src='assets/teaser.png'>
-<video src='assets/teaser.mp4'></video>
+<video src="./assets/teaser.mp4" controls preload></video>
 
 ## Pipeline
 <img src='https://github.com/FDNeRF/FDNeRF.github.io/blob/main/static/images/pipeline_v4.png'>
