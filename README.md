@@ -17,7 +17,7 @@ conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 pip install mmcv-full==1.3.9 -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.html
 ```
 
-There are some packages that are not included in the `environment.yml` file. Perhaps the author forget about them. You can install them using the following command:
+There are some packages that are not included in the `environment.yml` file. Perhaps the author forgot about them. You can install them using the following command:
 ```bash
 pip install skimage lpips openpyxl dlib imageio-ffmpeg
 ```
